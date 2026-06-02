@@ -1,26 +1,8 @@
-async function getAccessToken(apiKey) {
-  if (apiKey.startsWith('IM')) {
-    const tokenResponse = await fetch('https://auth.x.ai/oauth2/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: 'b1a00492-073a-47ea-816f-4c329264a828',
-        refresh_token: apiKey,
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      throw new Error(`Failed to refresh OAuth token: ${errorText}`);
-    }
-
-    const tokenData = await tokenResponse.json();
-    return tokenData.access_token;
+function getApiBaseUrl(apiKey) {
+  if (apiKey && apiKey.trim().startsWith('IM')) {
+    return 'https://api.grok.com';
   }
-  return apiKey;
+  return 'https://api.x.ai';
 }
 
 export default async function handler(req, res) {
@@ -39,10 +21,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const token = await getAccessToken(apiKey);
-    const response = await fetch(`https://api.x.ai/v1/videos/${requestId}`, {
+    const apiBase = getApiBaseUrl(apiKey);
+    const response = await fetch(`${apiBase}/v1/videos/${requestId}`, {
+      method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${apiKey.trim()}`,
       },
     });
 
