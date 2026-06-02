@@ -163,34 +163,45 @@
     }
 
     // Mode 1: OAuth Login Initiate
-    elTabs.btnGrokLogin.addEventListener('click', async () => {
-      try {
-        const verifier = generateVerifier();
-        localStorage.setItem('grok_oauth_verifier', verifier);
-        
-        const challenge = await generateChallenge(verifier);
-        const stateStr = Math.random().toString(36).substring(2, 15);
-        const nonce = Math.random().toString(36).substring(2, 15);
-        
-        const consentUrl = `https://accounts.x.ai/sign-in?redirect=oauth2-provider&return_to=${encodeURIComponent(
-          `/oauth2/consent?response_type=code&client_id=b1a00492-073a-47ea-816f-4c329264a828&redirect_uri=http://127.0.0.1:38769/callback&scope=openid profile email offline_access grok-cli:access api:access&state=${stateStr}&code_challenge=${challenge}&code_challenge_method=S256&nonce=${nonce}&referrer=banana-grok`
-        )}`;
-        
-        // Open OAuth consent page in new tab
-        window.open(consentUrl, '_blank');
-        
-        // Show auth code input field
-        elTabs.authCodeWrap.style.display = 'flex';
-        elTabs.authCodeInput.value = '';
-        elTabs.authCodeInput.focus();
-        elTabs.grokLoginHint.textContent = '로그인 완료 후 생성된 코드를 아래에 입력하세요.';
-        elTabs.grokLoginHint.style.color = 'rgba(255, 255, 255, 0.6)';
-        toast('xAI Login tab opened. Please authorize and copy the code.', 'info');
-      } catch (err) {
-        console.error('Login initiation failed:', err);
-        toast('Failed to initiate login flow', 'error');
+    elTabs.btnGrokLogin.addEventListener('click', () => {
+      // Open a blank window immediately inside the synchronous click context to bypass popup blockers
+      const loginWindow = window.open('about:blank', '_blank');
+      if (!loginWindow) {
+        toast('팝업이 차단되었습니다! 브라우저 설정에서 팝업을 허용해 주세요.', 'error');
+        return;
       }
+
+      (async () => {
+        try {
+          const verifier = generateVerifier();
+          localStorage.setItem('grok_oauth_verifier', verifier);
+          
+          const challenge = await generateChallenge(verifier);
+          const stateStr = Math.random().toString(36).substring(2, 15);
+          const nonce = Math.random().toString(36).substring(2, 15);
+          
+          const consentUrl = `https://accounts.x.ai/sign-in?redirect=oauth2-provider&return_to=${encodeURIComponent(
+            `/oauth2/consent?response_type=code&client_id=b1a00492-073a-47ea-816f-4c329264a828&redirect_uri=http://127.0.0.1:38769/callback&scope=openid profile email offline_access grok-cli:access api:access&state=${stateStr}&code_challenge=${challenge}&code_challenge_method=S256&nonce=${nonce}&referrer=banana-grok`
+          )}`;
+          
+          // Redirect the blank window to the authorization URL
+          loginWindow.location.href = consentUrl;
+          
+          // Show auth code input field
+          elTabs.authCodeWrap.style.display = 'flex';
+          elTabs.authCodeInput.value = '';
+          elTabs.authCodeInput.focus();
+          elTabs.grokLoginHint.textContent = '로그인 완료 후 생성된 코드를 아래에 입력하세요.';
+          elTabs.grokLoginHint.style.color = 'rgba(255, 255, 255, 0.6)';
+          toast('xAI 로그인 창이 열렸습니다. 인증 후 코드를 복사해 주세요.', 'info');
+        } catch (err) {
+          console.error('Login initiation failed:', err);
+          loginWindow.close();
+          toast('로그인 요청 생성 실패', 'error');
+        }
+      })();
     });
+
 
     // Mode 1: OAuth Complete (Token exchange)
     elTabs.btnCompleteLogin.addEventListener('click', async () => {
