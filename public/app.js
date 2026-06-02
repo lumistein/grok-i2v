@@ -8,15 +8,111 @@
   // ========== State ==========
   const state = {
     apiKey: localStorage.getItem('grok_i2v_api_key') || '',
-    model: localStorage.getItem('grok_i2v_model') || 'grok-imagine-video-1.5-preview',
+    model: 'grok-imagine-video-1.5-preview',
     imageData: null, // base64 data URI
     imageFileName: '',
-    feedItems: JSON.parse(localStorage.getItem('grok_i2v_feed') || '[]'),
+    feedItems: [], // Loaded from IndexedDB on init
     generating: false,
-    resolution: localStorage.getItem('grok_i2v_resolution') || '720p',
-    columns: parseInt(localStorage.getItem('grok_i2v_columns') || '3', 10),
+    resolution: '720p',
+    columns: 3,
     activePollIds: new Map(), // requestId -> intervalId
   };
+
+  // ========== IndexedDB Database Setup ==========
+  const dbName = "GrokI2VStudioDB";
+  const dbVersion = 1;
+  let db = null;
+
+  function openDB() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(dbName, dbVersion);
+      request.onerror = (e) => reject(e.target.error);
+      request.onsuccess = (e) => {
+        db = e.target.result;
+        resolve(db);
+      };
+      request.onupgradeneeded = (e) => {
+        const database = e.target.result;
+        if (!database.objectStoreNames.contains('feed')) {
+          database.createObjectStore('feed', { keyPath: 'id' });
+        }
+        if (!database.objectStoreNames.contains('appState')) {
+          database.createObjectStore('appState', { keyPath: 'key' });
+        }
+      };
+    });
+  }
+
+  function getFeedFromDB() {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve([]); return; }
+      const transaction = db.transaction(['feed'], 'readonly');
+      const store = transaction.objectStore(['feed']);
+      const request = store.getAll();
+      request.onsuccess = () => {
+        const list = request.result || [];
+        list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        resolve(list);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function saveFeedItemToDB(item) {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve(); return; }
+      const transaction = db.transaction(['feed'], 'readwrite');
+      const store = transaction.objectStore(['feed']);
+      const request = store.put(item);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function deleteFeedItemFromDB(id) {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve(); return; }
+      const transaction = db.transaction(['feed'], 'readwrite');
+      const store = transaction.objectStore(['feed']);
+      const request = store.delete(id);
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function clearFeedDB() {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve(); return; }
+      const transaction = db.transaction(['feed'], 'readwrite');
+      const store = transaction.objectStore(['feed']);
+      const request = store.clear();
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function setAppStateDB(key, value) {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve(); return; }
+      const transaction = db.transaction(['appState'], 'readwrite');
+      const store = transaction.objectStore(['appState']);
+      const request = store.put({ key, value });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function getAppStateDB(key) {
+    return new Promise((resolve, reject) => {
+      if (!db) { resolve(null); return; }
+      const transaction = db.transaction(['appState'], 'readonly');
+      const store = transaction.objectStore(['appState']);
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result ? request.result.value : null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
 
 
   // ========== DOM Refs ==========
@@ -338,6 +434,10 @@
       state.imageFileName = file.name;
       showImage(e.target.result);
       updateGenerateBtn();
+      
+      // Save state to IndexedDB
+      setAppStateDB('currentImage', e.target.result);
+      setAppStateDB('currentImageName', file.name);
     };
     reader.readAsDataURL(file);
   }
@@ -359,6 +459,10 @@
     el.clearImageBtn.style.display = 'none';
     el.imageUploadZone.classList.remove('has-image');
     updateGenerateBtn();
+    
+    // Save state to IndexedDB
+    setAppStateDB('currentImage', null);
+    setAppStateDB('currentImageName', '');
   }
 
   // ========== Settings ==========
@@ -368,7 +472,7 @@
       el.modelSelect.value = state.model;
       el.modelSelect.addEventListener('change', () => {
         state.model = el.modelSelect.value;
-        localStorage.setItem('grok_i2v_model', state.model);
+        setAppStateDB('currentModel', state.model);
         toast(`Model changed to ${state.model.includes('1.5') ? 'Video 1.5' : 'Video 1.0'}`, 'info');
       });
     }
@@ -376,6 +480,7 @@
     // Duration slider
     el.durationSlider.addEventListener('input', () => {
       el.durationValue.textContent = el.durationSlider.value + 's';
+      setAppStateDB('currentDuration', el.durationSlider.value);
     });
 
     // Resolution segmented control
@@ -388,9 +493,23 @@
         el.resolutionControl.querySelector('.seg-btn.active')?.classList.remove('active');
         btn.classList.add('active');
         state.resolution = btn.dataset.value;
-        localStorage.setItem('grok_i2v_resolution', state.resolution);
+        setAppStateDB('currentResolution', state.resolution);
       });
     });
+
+    // Aspect Ratio select
+    if (el.aspectRatioSelect) {
+      el.aspectRatioSelect.addEventListener('change', () => {
+        setAppStateDB('currentAspectRatio', el.aspectRatioSelect.value);
+      });
+    }
+
+    // Prompt input real-time backup
+    if (el.promptInput) {
+      el.promptInput.addEventListener('input', () => {
+        setAppStateDB('currentPrompt', el.promptInput.value);
+      });
+    }
 
     // Settings toggle
     el.settingsToggle.addEventListener('click', () => {
@@ -411,17 +530,22 @@
         btn.classList.add('active');
         el.feedGrid.dataset.cols = btn.dataset.cols;
         state.columns = parseInt(btn.dataset.cols);
-        localStorage.setItem('grok_i2v_columns', state.columns);
+        setAppStateDB('currentColumns', state.columns.toString());
       });
     });
 
-    // Clear feed
-    el.clearFeedBtn.addEventListener('click', () => {
+    // Clear feed (will use clearFeedDB helper)
+    el.clearFeedBtn.addEventListener('click', async () => {
       if (!state.feedItems.length) return;
       if (confirm('Clear all videos from the feed?')) {
-        state.feedItems = [];
-        saveFeed();
-        renderFeed();
+        try {
+          await clearFeedDB();
+          state.feedItems = [];
+          renderFeed();
+          toast('Feed cleared successfully', 'success');
+        } catch (err) {
+          toast(`Clear failed: ${err.message}`, 'error');
+        }
       }
     });
   }
@@ -464,6 +588,8 @@
       duration,
       resolution,
       aspectRatio,
+      model: state.model,
+      imageData: state.imageData, // Store reference image base64
       status: 'generating',
       createdAt: new Date().toISOString(),
       videoUrl: null,
@@ -471,6 +597,12 @@
     };
     state.feedItems.unshift(cardData);
     renderFeed();
+    
+    try {
+      await saveFeedItemToDB(cardData);
+    } catch (dbErr) {
+      console.warn('Failed to save initial placeholder to IndexedDB:', dbErr);
+    }
 
     try {
       // Build request body
@@ -504,7 +636,12 @@
       if (!requestId) throw new Error('No request_id returned');
 
       cardData.requestId = requestId;
-      saveFeed();
+      
+      try {
+        await saveFeedItemToDB(cardData);
+      } catch (dbErr) {
+        console.warn('Failed to update request ID in IndexedDB:', dbErr);
+      }
 
       // Start polling
       pollForResult(placeholderId, requestId);
@@ -512,7 +649,13 @@
       console.error('Generate error:', err);
       cardData.status = 'error';
       cardData.error = err.message;
-      saveFeed();
+      
+      try {
+        await saveFeedItemToDB(cardData);
+      } catch (dbErr) {
+        console.warn('Failed to update error status in IndexedDB:', dbErr);
+      }
+      
       renderFeed();
       toast(`Generation failed: ${err.message}`, 'error');
       finishGenerating();
@@ -550,8 +693,12 @@
           if (card) {
             card.status = 'done';
             card.videoUrl = videoUrl;
+            try {
+              await saveFeedItemToDB(card);
+            } catch (dbErr) {
+              console.warn('Failed to save generated video URL to IndexedDB:', dbErr);
+            }
           }
-          saveFeed();
           renderFeed();
           finishGenerating();
           toast('Video generated successfully!', 'success');
@@ -572,8 +719,12 @@
           if (card) {
             card.status = 'error';
             card.error = err.message;
+            try {
+              await saveFeedItemToDB(card);
+            } catch (dbErr) {
+              console.warn('Failed to save failed generation state to IndexedDB:', dbErr);
+            }
           }
-          saveFeed();
           renderFeed();
           finishGenerating();
           toast(`Generation failed: ${err.message}`, 'error');
@@ -601,21 +752,7 @@
     return m > 0 ? `${m}m ${s}s` : `${s}s`;
   }
 
-  // ========== Feed ==========
-  function saveFeed() {
-    // Don't save base64 image data in feed to avoid huge localStorage
-    const cleanedFeed = state.feedItems.map(item => {
-      const clean = { ...item };
-      return clean;
-    });
-    try {
-      localStorage.setItem('grok_i2v_feed', JSON.stringify(cleanedFeed));
-    } catch (e) {
-      console.warn('Feed too large for localStorage, trimming...');
-      state.feedItems = state.feedItems.slice(0, 20);
-      localStorage.setItem('grok_i2v_feed', JSON.stringify(state.feedItems));
-    }
-  }
+
 
   function renderFeed() {
     el.feedGrid.innerHTML = '';
@@ -631,7 +768,7 @@
           <button class="card-delete-btn" title="Remove" data-action="delete" data-id="${item.id}">
             <i class="fa-solid fa-xmark"></i>
           </button>
-          <div class="feed-card-generating">
+          <div class="feed-card-generating" ${item.imageData ? `style="background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url('${escapeAttr(item.imageData)}'); background-size: cover; background-position: center;"` : ''}>
             <div class="generating-spinner"></div>
             <div class="generating-text">Generating video...</div>
             <div class="generating-elapsed">${formatTime(0)}</div>
@@ -640,6 +777,7 @@
             <div class="feed-card-prompt">${escapeHtml(item.prompt)}</div>
             <div class="feed-card-meta">
               <div class="feed-card-tags">
+                <span class="meta-tag">${item.model && item.model.includes('1.5') ? 'v1.5' : 'v1.0'}</span>
                 <span class="meta-tag">${item.duration}s</span>
                 <span class="meta-tag">${item.resolution}</span>
                 ${item.aspectRatio !== 'auto' ? `<span class="meta-tag">${item.aspectRatio}</span>` : ''}
@@ -651,15 +789,16 @@
           <button class="card-delete-btn" title="Remove" data-action="delete" data-id="${item.id}">
             <i class="fa-solid fa-xmark"></i>
           </button>
-          <div class="feed-card-generating" style="background: rgba(248,113,113,0.05);">
-            <i class="fa-solid fa-circle-xmark" style="font-size:2rem;color:var(--error);"></i>
+          <div class="feed-card-generating" style="${item.imageData ? `background-image: linear-gradient(rgba(248,113,113,0.15), rgba(0,0,0,0.85)), url('${escapeAttr(item.imageData)}'); background-size: cover; background-position: center;` : 'background: rgba(248,113,113,0.05);'}">
+            <i class="fa-solid fa-circle-xmark" style="font-size:1.8rem;color:var(--error);margin-bottom:0.4rem;"></i>
             <div class="generating-text" style="color:var(--error);">Failed</div>
-            <div class="generating-elapsed" style="color:var(--text-tertiary);font-size:0.7rem;max-width:80%;text-align:center;">${escapeHtml(item.error || 'Unknown error')}</div>
+            <div class="generating-elapsed" style="color:var(--text-tertiary);font-size:0.7rem;max-width:85%;text-align:center;word-break:break-all;">${escapeHtml(item.error || 'Unknown error')}</div>
           </div>
           <div class="feed-card-info">
             <div class="feed-card-prompt">${escapeHtml(item.prompt)}</div>
             <div class="feed-card-meta">
               <div class="feed-card-tags">
+                <span class="meta-tag">${item.model && item.model.includes('1.5') ? 'v1.5' : 'v1.0'}</span>
                 <span class="meta-tag">${item.duration}s</span>
                 <span class="meta-tag">${item.resolution}</span>
               </div>
@@ -672,7 +811,7 @@
             <i class="fa-solid fa-xmark"></i>
           </button>
           <div class="feed-card-video" data-action="play" data-url="${escapeAttr(videoSrc)}" data-original-url="${escapeAttr(item.videoUrl)}">
-            <video muted loop playsinline preload="metadata" crossorigin="anonymous">
+            <video muted loop playsinline preload="metadata" crossorigin="anonymous" ${item.imageData ? `poster="${escapeAttr(item.imageData)}"` : ''}>
               <source src="${escapeAttr(videoSrc)}" type="video/mp4">
             </video>
             <div class="card-play-overlay"><i class="fa-solid fa-expand"></i></div>
@@ -681,6 +820,7 @@
             <div class="feed-card-prompt">${escapeHtml(item.prompt)}</div>
             <div class="feed-card-meta">
               <div class="feed-card-tags">
+                <span class="meta-tag">${item.model && item.model.includes('1.5') ? 'v1.5' : 'v1.0'}</span>
                 <span class="meta-tag">${item.duration}s</span>
                 <span class="meta-tag">${item.resolution}</span>
                 ${item.aspectRatio && item.aspectRatio !== 'auto' ? `<span class="meta-tag">${item.aspectRatio}</span>` : ''}
@@ -713,14 +853,21 @@
 
     // Bind actions
     el.feedGrid.querySelectorAll('[data-action], .card-delete-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const action = btn.dataset.action || (btn.classList.contains('card-delete-btn') ? 'delete' : null);
         if (action === 'delete') {
           e.stopPropagation();
           const id = btn.dataset.id;
-          state.feedItems = state.feedItems.filter(f => f.id !== id);
-          saveFeed();
-          renderFeed();
+          if (confirm('이 비디오를 삭제하시겠습니까?')) {
+            try {
+              await deleteFeedItemFromDB(id);
+              state.feedItems = state.feedItems.filter(f => f.id !== id);
+              renderFeed();
+              toast('비디오가 성공적으로 삭제되었습니다.', 'success');
+            } catch (err) {
+              toast(`삭제 실패: ${err.message}`, 'error');
+            }
+          }
         } else if (action === 'play') {
           openLightbox(btn.dataset.url);
         } else if (action === 'download') {
@@ -805,18 +952,62 @@
   }
 
   // ========== Init ==========
-  function init() {
-    initApiKey();
-    initImageUpload();
-    initSettings();
-    initGenerate();
-    initLightbox();
-    updateGenerateBtn();
-    setStatus('Ready', 'ready');
-    renderFeed();
+  async function init() {
+    try {
+      setStatus('Initializing database...', 'generating');
+      await openDB();
+      
+      // Load feed from IndexedDB
+      state.feedItems = await getFeedFromDB();
 
-    // Restore settings
-    el.feedGrid.dataset.cols = state.columns;
+      // Load settings and inputs from DB
+      state.model = await getAppStateDB('currentModel') || 'grok-imagine-video-1.5-preview';
+      state.resolution = await getAppStateDB('currentResolution') || '720p';
+      state.columns = parseInt(await getAppStateDB('currentColumns') || '3', 10);
+      
+      const savedPrompt = await getAppStateDB('currentPrompt') || '';
+      el.promptInput.value = savedPrompt;
+
+      const savedImage = await getAppStateDB('currentImage');
+      const savedImageName = await getAppStateDB('currentImageName') || '';
+      if (savedImage) {
+        state.imageData = savedImage;
+        state.imageFileName = savedImageName;
+        showImage(savedImage);
+      }
+
+      const savedDuration = await getAppStateDB('currentDuration') || '5';
+      el.durationSlider.value = savedDuration;
+      el.durationValue.textContent = savedDuration + 's';
+
+      const savedAspectRatio = await getAppStateDB('currentAspectRatio') || 'auto';
+      el.aspectRatioSelect.value = savedAspectRatio;
+
+      initApiKey();
+      initImageUpload();
+      initSettings();
+      initGenerate();
+      initLightbox();
+      updateGenerateBtn();
+      setStatus('Ready', 'ready');
+      renderFeed();
+
+      // Restore settings
+      el.feedGrid.dataset.cols = state.columns;
+    } catch (err) {
+      console.error('Initialization failed:', err);
+      setStatus('DB Init Error', 'error');
+      toast('Failed to load database. State might not persist.', 'error');
+      
+      // Fallback
+      initApiKey();
+      initImageUpload();
+      initSettings();
+      initGenerate();
+      initLightbox();
+      updateGenerateBtn();
+      renderFeed();
+    }
   }
 
   // Boot
