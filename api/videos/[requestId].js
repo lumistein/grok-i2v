@@ -1,10 +1,3 @@
-function getApiBaseUrl(apiKey) {
-  if (apiKey && apiKey.trim().startsWith('IM')) {
-    return 'https://api.grok.com';
-  }
-  return 'https://api.x.ai';
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -21,8 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiBase = getApiBaseUrl(apiKey);
-    const response = await fetch(`${apiBase}/v1/videos/${requestId}`, {
+    const response = await fetch(`https://api.x.ai/v1/videos/${requestId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey.trim()}`,

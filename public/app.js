@@ -70,29 +70,179 @@
     el.statusPill.className = `status-pill ${mode}`;
   }
 
-  // ========== API Key ==========
+  // Cryptographic helpers for PKCE
+  function dec2hex(dec) {
+    return ('0' + dec.toString(16)).substr(-2);
+  }
+
+  function generateVerifier() {
+    const array = new Uint32Array(56);
+    window.crypto.getRandomValues(array);
+    return Array.from(array, dec2hex).join('');
+  }
+
+  async function sha256(plain) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plain);
+    return window.crypto.subtle.digest('SHA-256', data);
+  }
+
+  function base64urlencode(a) {
+    let str = "";
+    const bytes = new Uint8Array(a);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      str += String.fromCharCode(bytes[i]);
+    }
+    return btoa(str)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
+
+  async function generateChallenge(verifier) {
+    const hashed = await sha256(verifier);
+    return base64urlencode(hashed);
+  }
+
+  // ========== API Key & OAuth Login ==========
   function initApiKey() {
+    const elTabs = {
+      tabGrokLogin: $('tabGrokLogin'),
+      tabApiKey: $('tabApiKey'),
+      grokLoginContainer: $('grokLoginContainer'),
+      apiKeyContainer: $('apiKeyContainer'),
+      btnGrokLogin: $('btnGrokLogin'),
+      authCodeWrap: $('authCodeWrap'),
+      authCodeInput: $('authCodeInput'),
+      btnCompleteLogin: $('btnCompleteLogin'),
+      grokLoginHint: $('grokLoginHint'),
+    };
+
+    // Tab switching
+    elTabs.tabGrokLogin.addEventListener('click', () => {
+      elTabs.tabGrokLogin.classList.add('active');
+      elTabs.tabGrokLogin.style.background = 'rgba(255,255,255,0.1)';
+      elTabs.tabGrokLogin.style.color = '#fff';
+      
+      elTabs.tabApiKey.classList.remove('active');
+      elTabs.tabApiKey.style.background = 'transparent';
+      elTabs.tabApiKey.style.color = 'rgba(255,255,255,0.4)';
+      
+      elTabs.grokLoginContainer.style.display = 'block';
+      elTabs.apiKeyContainer.style.display = 'none';
+    });
+
+    elTabs.tabApiKey.addEventListener('click', () => {
+      elTabs.tabApiKey.classList.add('active');
+      elTabs.tabApiKey.style.background = 'rgba(255,255,255,0.1)';
+      elTabs.tabApiKey.style.color = '#fff';
+      
+      elTabs.tabGrokLogin.classList.remove('active');
+      elTabs.tabGrokLogin.style.background = 'transparent';
+      elTabs.tabGrokLogin.style.color = 'rgba(255,255,255,0.4)';
+      
+      elTabs.apiKeyContainer.style.display = 'block';
+      elTabs.grokLoginContainer.style.display = 'none';
+    });
+
+    // Populate saved credentials
     if (state.apiKey) {
-      el.apiKeyInput.value = state.apiKey;
-      el.apiKeyHint.textContent = 'API key saved ✓';
-      el.apiKeyHint.className = 'hint-text saved';
+      if (state.apiKey.startsWith('xai-')) {
+        // Switch to API Key tab
+        elTabs.tabApiKey.click();
+        el.apiKeyInput.value = state.apiKey;
+      } else {
+        // Assume OAuth token (Grok Login)
+        elTabs.tabGrokLogin.click();
+        elTabs.authCodeWrap.style.display = 'flex';
+        elTabs.authCodeInput.value = '••••••••••••••••••••';
+        elTabs.grokLoginHint.textContent = 'Grok 계정 로그인 연동됨 ✓';
+        elTabs.grokLoginHint.style.color = 'var(--accent)';
+      }
     }
 
+    // Mode 1: OAuth Login Initiate
+    elTabs.btnGrokLogin.addEventListener('click', async () => {
+      try {
+        const verifier = generateVerifier();
+        localStorage.setItem('grok_oauth_verifier', verifier);
+        
+        const challenge = await generateChallenge(verifier);
+        const stateStr = Math.random().toString(36).substring(2, 15);
+        const nonce = Math.random().toString(36).substring(2, 15);
+        
+        const consentUrl = `https://accounts.x.ai/sign-in?redirect=oauth2-provider&return_to=${encodeURIComponent(
+          `/oauth2/consent?response_type=code&client_id=b1a00492-073a-47ea-816f-4c329264a828&redirect_uri=http://127.0.0.1:38769/callback&scope=openid profile email offline_access grok-cli:access api:access&state=${stateStr}&code_challenge=${challenge}&code_challenge_method=S256&nonce=${nonce}&referrer=banana-grok`
+        )}`;
+        
+        // Open OAuth consent page in new tab
+        window.open(consentUrl, '_blank');
+        
+        // Show auth code input field
+        elTabs.authCodeWrap.style.display = 'flex';
+        elTabs.authCodeInput.value = '';
+        elTabs.authCodeInput.focus();
+        elTabs.grokLoginHint.textContent = '로그인 완료 후 생성된 코드를 아래에 입력하세요.';
+        elTabs.grokLoginHint.style.color = 'rgba(255, 255, 255, 0.6)';
+        toast('xAI Login tab opened. Please authorize and copy the code.', 'info');
+      } catch (err) {
+        console.error('Login initiation failed:', err);
+        toast('Failed to initiate login flow', 'error');
+      }
+    });
+
+    // Mode 1: OAuth Complete (Token exchange)
+    elTabs.btnCompleteLogin.addEventListener('click', async () => {
+      const code = elTabs.authCodeInput.value.trim();
+      const verifier = localStorage.getItem('grok_oauth_verifier');
+      
+      if (!code) { toast('인증 코드를 입력해 주세요.', 'warning'); return; }
+      if (code === '••••••••••••••••••••') { toast('이미 로그인 연동이 완료되어 있습니다.', 'info'); return; }
+      if (!verifier) { toast('로그인 세션 정보가 없습니다. 다시 로그인을 진행해 주세요.', 'error'); return; }
+      
+      try {
+        elTabs.btnCompleteLogin.disabled = true;
+        elTabs.grokLoginHint.textContent = '인증 토큰 교환 중...';
+        
+        const resp = await fetch('/api/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, code_verifier: verifier }),
+        });
+        
+        const data = await resp.json();
+        elTabs.btnCompleteLogin.disabled = false;
+        
+        if (!resp.ok) {
+          throw new Error(data.error || 'Token exchange failed');
+        }
+        
+        const accessToken = data.access_token;
+        state.apiKey = accessToken;
+        localStorage.setItem('grok_i2v_api_key', accessToken);
+        
+        elTabs.authCodeInput.value = '••••••••••••••••••••';
+        elTabs.grokLoginHint.textContent = 'Grok 계정 로그인 연동 성공 ✓';
+        elTabs.grokLoginHint.style.color = 'var(--accent)';
+        toast('Grok 계정이 성공적으로 연동되었습니다!', 'success');
+        updateGenerateBtn();
+      } catch (err) {
+        console.error('Auth completion failed:', err);
+        elTabs.grokLoginHint.textContent = `연동 실패: ${err.message}`;
+        elTabs.grokLoginHint.style.color = 'var(--error)';
+        toast(`연동 실패: ${err.message}`, 'error');
+      }
+    });
+
+    // Mode 2: Manual API Key Save
     el.saveApiKey.addEventListener('click', () => {
       const key = el.apiKeyInput.value.trim();
       if (!key) { toast('Please enter an API key', 'warning'); return; }
       state.apiKey = key;
       localStorage.setItem('grok_i2v_api_key', key);
-      el.apiKeyHint.textContent = 'API key saved ✓';
-      el.apiKeyHint.className = 'hint-text saved';
       toast('API key saved', 'success');
       updateGenerateBtn();
-    });
-
-    el.toggleApiKey.addEventListener('click', () => {
-      const isPassword = el.apiKeyInput.type === 'password';
-      el.apiKeyInput.type = isPassword ? 'text' : 'password';
-      el.toggleApiKey.querySelector('i').className = `fa-solid fa-eye${isPassword ? '' : '-slash'}`;
     });
   }
 

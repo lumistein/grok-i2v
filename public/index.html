@@ -46,29 +46,45 @@
           <div class="section-header">
             <div class="section-title">
               <i class="fa-solid fa-key"></i>
-              <span>API Key</span>
+              <span>인증 설정 (Authentication)</span>
             </div>
-            <button class="btn-icon" id="toggleApiKey" title="Toggle visibility">
-              <i class="fa-solid fa-eye-slash"></i>
+          </div>
+
+          <!-- Authentication Tabs -->
+          <div class="auth-tabs" style="display: flex; gap: 0.4rem; margin-bottom: 0.75rem; background: rgba(255,255,255,0.03); padding: 0.25rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+            <button class="auth-tab-btn active" id="tabGrokLogin" style="flex: 1; padding: 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 6px; cursor: pointer; border: none; transition: all 0.2s;">
+              <i class="fa-brands fa-x-twitter" style="margin-right: 0.3rem;"></i>Grok 로그인 (크레딧)
+            </button>
+            <button class="auth-tab-btn" id="tabApiKey" style="flex: 1; padding: 0.5rem; font-size: 0.75rem; font-weight: 500; border-radius: 6px; cursor: pointer; border: none; transition: all 0.2s; background: transparent; color: rgba(255,255,255,0.4);">
+              <i class="fa-solid fa-key" style="margin-right: 0.3rem;"></i>API Key 직접 입력
             </button>
           </div>
-          <div class="api-key-wrap">
-            <input type="password" id="apiKeyInput" class="input-field" placeholder="xai-..." autocomplete="off" spellcheck="false">
-            <button class="btn-icon btn-save" id="saveApiKey" title="Save key">
-              <i class="fa-solid fa-check"></i>
-            </button>
-          </div>
-          <div class="api-key-links">
-            <a href="https://console.x.ai/" target="_blank" rel="noopener" class="btn-get-key" id="getApiKeyLink">
-              <i class="fa-solid fa-arrow-up-right-from-square"></i>
-              <span>Get API Key</span>
-            </a>
-            <a href="https://accounts.x.ai/" target="_blank" rel="noopener" class="btn-xai-login" id="xaiLoginLink">
+
+          <!-- Mode 1: Grok Login (Default) -->
+          <div id="grokLoginContainer">
+            <button class="btn-primary" id="btnGrokLogin" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem; background: #fff; color: #000; border: none; font-weight: 600; padding: 0.7rem; border-radius: 8px; cursor: pointer;">
               <i class="fa-brands fa-x-twitter"></i>
-              <span>xAI 로그인</span>
-            </a>
+              <span>Grok 계정 로그인</span>
+            </button>
+            <div class="api-key-wrap" id="authCodeWrap" style="display: none; display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <input type="password" id="authCodeInput" class="input-field" placeholder="OAuth 인증 코드 입력 (0AecM...)" autocomplete="off" spellcheck="false" style="flex: 1; padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+              <button class="btn-icon btn-save" id="btnCompleteLogin" title=" Complete" style="background: var(--accent); color: #fff; border: none; border-radius: 6px; width: 40px; cursor: pointer;">
+                <i class="fa-solid fa-check"></i>
+              </button>
+            </div>
+            <p class="hint-text" id="grokLoginHint" style="font-size: 0.75rem; color: rgba(255,255,255,0.4); text-align: center; margin: 0;">로그인 완료 후 발급되는 코드(Authorization Code)를 입력하세요</p>
           </div>
-          <p class="hint-text" id="apiKeyHint">console.x.ai에서 API Key를 발급받아 입력하세요</p>
+
+          <!-- Mode 2: Manual API Key -->
+          <div id="apiKeyContainer" style="display: none;">
+            <div class="api-key-wrap" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+              <input type="password" id="apiKeyInput" class="input-field" placeholder="xai-..." autocomplete="off" spellcheck="false" style="flex: 1; padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
+              <button class="btn-icon btn-save" id="saveApiKey" title="Save key" style="background: var(--accent); color: #fff; border: none; border-radius: 6px; width: 40px; cursor: pointer;">
+                <i class="fa-solid fa-check"></i>
+              </button>
+            </div>
+            <p class="hint-text" id="apiKeyHint" style="font-size: 0.75rem; color: rgba(255,255,255,0.4); text-align: center; margin: 0;">console.x.ai에서 발급받은 API Key를 입력하세요</p>
+          </div>
         </section>
 
         <!-- Image Upload Section -->

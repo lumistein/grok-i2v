@@ -1,10 +1,3 @@
-function getApiBaseUrl(apiKey) {
-  if (apiKey && apiKey.trim().startsWith('IM')) {
-    return 'https://api.grok.com';
-  }
-  return 'https://api.x.ai';
-}
-
 // Edge Runtime for streaming large video files without body size limits
 export const config = {
   runtime: 'edge',
