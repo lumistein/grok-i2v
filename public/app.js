@@ -163,12 +163,39 @@
     }
 
     // Mode 1: OAuth Login Initiate
-    elTabs.btnGrokLogin.addEventListener('click', () => {
-      // Open a blank window immediately inside the synchronous click context to bypass popup blockers
-      const loginWindow = window.open('about:blank', '_blank');
+    elTabs.btnGrokLogin.addEventListener('click', (e) => {
+      // Prevent default action and stop event propagation
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Open a blank window immediately inside the synchronous click context with empty URL
+      const loginWindow = window.open('', '_blank');
       if (!loginWindow) {
-        toast('팝업이 차단되었습니다! 브라우저 설정에서 팝업을 허용해 주세요.', 'error');
+        toast('팝업이 차단되었습니다! 브라우저 설정이나 주소창 옆 아이콘에서 팝업을 허용해 주세요.', 'error');
         return;
+      }
+
+      // Show temporary loading indicator in the new window
+      try {
+        loginWindow.document.write(`
+          <html>
+            <head>
+              <title>Connecting to xAI...</title>
+              <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #000; color: #fff; margin: 0; }
+                .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1rem; }
+                @keyframes spin { to { transform: rotate(360deg); } }
+              </style>
+            </head>
+            <body>
+              <div class="spinner"></div>
+              <h2>Connecting to xAI...</h2>
+              <p style="color: #888; font-size: 0.9rem;">Establishing secure PKCE connection</p>
+            </body>
+          </html>
+        `);
+      } catch (err) {
+        // Safe fallback if document.write is blocked
       }
 
       (async () => {
@@ -201,6 +228,7 @@
         }
       })();
     });
+
 
 
     // Mode 1: OAuth Complete (Token exchange)
