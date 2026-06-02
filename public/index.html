@@ -168,6 +168,15 @@
                 </select>
               </div>
             </div>
+            <div class="setting-row">
+              <label class="setting-label" for="modelSelect">Model</label>
+              <div class="setting-control">
+                <select id="modelSelect" class="select-field">
+                  <option value="grok-imagine-video-1.5-preview" selected>Grok Imagine Video 1.5 Preview</option>
+                  <option value="grok-imagine-video">Grok Imagine Video 1.0</option>
+                </select>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -192,9 +201,9 @@
         <div class="feed-area" id="feedArea">
           <div class="feed-toolbar" id="feedToolbar">
             <div class="column-controls">
-              <button class="col-btn active" data-cols="1" title="1 column"><i class="fa-solid fa-square"></i></button>
               <button class="col-btn" data-cols="2" title="2 columns"><i class="fa-solid fa-table-cells-large"></i></button>
-              <button class="col-btn" data-cols="3" title="3 columns"><i class="fa-solid fa-grip"></i></button>
+              <button class="col-btn active" data-cols="3" title="3 columns"><i class="fa-solid fa-grip"></i></button>
+              <button class="col-btn" data-cols="4" title="4 columns"><i class="fa-solid fa-table-cells"></i></button>
             </div>
             <div class="feed-actions">
               <button class="btn-ghost btn-sm" id="clearFeedBtn" title="Clear all">
@@ -204,7 +213,8 @@
             </div>
           </div>
 
-          <div class="feed-grid" id="feedGrid" data-cols="1"></div>
+          <div class="feed-grid" id="feedGrid" data-cols="3"></div>
+
 
           <div class="empty-state" id="emptyState">
             <div class="empty-icon">

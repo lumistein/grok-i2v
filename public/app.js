@@ -8,14 +8,16 @@
   // ========== State ==========
   const state = {
     apiKey: localStorage.getItem('grok_i2v_api_key') || '',
+    model: localStorage.getItem('grok_i2v_model') || 'grok-imagine-video-1.5-preview',
     imageData: null, // base64 data URI
     imageFileName: '',
     feedItems: JSON.parse(localStorage.getItem('grok_i2v_feed') || '[]'),
     generating: false,
     resolution: localStorage.getItem('grok_i2v_resolution') || '720p',
-    columns: parseInt(localStorage.getItem('grok_i2v_columns') || '1', 10),
+    columns: parseInt(localStorage.getItem('grok_i2v_columns') || '3', 10),
     activePollIds: new Map(), // requestId -> intervalId
   };
+
 
   // ========== DOM Refs ==========
   const $ = (id) => document.getElementById(id);
@@ -24,6 +26,7 @@
     saveApiKey: $('saveApiKey'),
     toggleApiKey: $('toggleApiKey'),
     apiKeyHint: $('apiKeyHint'),
+    modelSelect: $('modelSelect'),
     imageUploadZone: $('imageUploadZone'),
     uploadPlaceholder: $('uploadPlaceholder'),
     imagePreview: $('imagePreview'),
@@ -53,6 +56,7 @@
     clearFeedBtn: $('clearFeedBtn'),
     toastContainer: $('toastContainer'),
   };
+
 
   // ========== Toast ==========
   function toast(message, type = 'info') {
@@ -359,6 +363,16 @@
 
   // ========== Settings ==========
   function initSettings() {
+    // Model select
+    if (el.modelSelect) {
+      el.modelSelect.value = state.model;
+      el.modelSelect.addEventListener('change', () => {
+        state.model = el.modelSelect.value;
+        localStorage.setItem('grok_i2v_model', state.model);
+        toast(`Model changed to ${state.model.includes('1.5') ? 'Video 1.5' : 'Video 1.0'}`, 'info');
+      });
+    }
+
     // Duration slider
     el.durationSlider.addEventListener('input', () => {
       el.durationValue.textContent = el.durationSlider.value + 's';
@@ -412,6 +426,7 @@
     });
   }
 
+
   // ========== Generate ==========
   function updateGenerateBtn() {
     const canGenerate = state.apiKey && state.imageData && !state.generating;
@@ -460,12 +475,14 @@
     try {
       // Build request body
       const body = {
-        model: 'grok-imagine-video',
+        model: state.model,
         prompt,
         image: { url: state.imageData }, // base64 data URI
         duration,
         resolution,
       };
+
+
       if (aspectRatio !== 'auto') body.aspect_ratio = aspectRatio;
 
       const resp = await fetch('/api/videos/generations', {
@@ -611,6 +628,9 @@
 
       if (item.status === 'generating') {
         card.innerHTML = `
+          <button class="card-delete-btn" title="Remove" data-action="delete" data-id="${item.id}">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
           <div class="feed-card-generating">
             <div class="generating-spinner"></div>
             <div class="generating-text">Generating video...</div>
@@ -628,6 +648,9 @@
           </div>`;
       } else if (item.status === 'error') {
         card.innerHTML = `
+          <button class="card-delete-btn" title="Remove" data-action="delete" data-id="${item.id}">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
           <div class="feed-card-generating" style="background: rgba(248,113,113,0.05);">
             <i class="fa-solid fa-circle-xmark" style="font-size:2rem;color:var(--error);"></i>
             <div class="generating-text" style="color:var(--error);">Failed</div>
@@ -640,16 +663,14 @@
                 <span class="meta-tag">${item.duration}s</span>
                 <span class="meta-tag">${item.resolution}</span>
               </div>
-              <div class="feed-card-actions">
-                <button class="card-action-btn delete" title="Remove" data-action="delete" data-id="${item.id}">
-                  <i class="fa-solid fa-trash"></i>
-                </button>
-              </div>
             </div>
           </div>`;
       } else if (item.status === 'done' && item.videoUrl) {
         const videoSrc = getVideoSrc(item.videoUrl);
         card.innerHTML = `
+          <button class="card-delete-btn" title="Remove" data-action="delete" data-id="${item.id}">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
           <div class="feed-card-video" data-action="play" data-url="${escapeAttr(videoSrc)}" data-original-url="${escapeAttr(item.videoUrl)}">
             <video muted loop playsinline preload="metadata" crossorigin="anonymous">
               <source src="${escapeAttr(videoSrc)}" type="video/mp4">
@@ -667,9 +688,6 @@
               <div class="feed-card-actions">
                 <button class="card-action-btn" title="Download" data-action="download" data-url="${escapeAttr(item.videoUrl)}">
                   <i class="fa-solid fa-download"></i>
-                </button>
-                <button class="card-action-btn delete" title="Remove" data-action="delete" data-id="${item.id}">
-                  <i class="fa-solid fa-trash"></i>
                 </button>
               </div>
             </div>
@@ -694,10 +712,11 @@
     });
 
     // Bind actions
-    el.feedGrid.querySelectorAll('[data-action]').forEach(btn => {
+    el.feedGrid.querySelectorAll('[data-action], .card-delete-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const action = btn.dataset.action;
+        const action = btn.dataset.action || (btn.classList.contains('card-delete-btn') ? 'delete' : null);
         if (action === 'delete') {
+          e.stopPropagation();
           const id = btn.dataset.id;
           state.feedItems = state.feedItems.filter(f => f.id !== id);
           saveFeed();
@@ -711,6 +730,7 @@
       });
     });
   }
+
 
   // ========== Lightbox ==========
   function initLightbox() {

@@ -873,9 +873,44 @@ body {
 
 .feed-grid[data-cols="2"] { grid-template-columns: repeat(2, 1fr); }
 .feed-grid[data-cols="3"] { grid-template-columns: repeat(3, 1fr); }
+.feed-grid[data-cols="4"] { grid-template-columns: repeat(4, 1fr); }
+
+/* Card Delete Button (Absolute Placement on Hover) */
+.card-delete-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(12, 16, 23, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+}
+
+.feed-card:hover .card-delete-btn {
+  opacity: 1;
+}
+
+.card-delete-btn:hover {
+  background: rgba(248, 113, 113, 0.95);
+  color: #fff;
+  border-color: transparent;
+  transform: scale(1.08);
+}
 
 /* Feed Card */
 .feed-card {
+
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-primary);
   background: var(--bg-card);
