@@ -1,0 +1,12 @@
+{
+  "name": "grok-i2v-personal",
+  "version": "1.0.0",
+  "description": "Personal Grok Imagine I2V Frontend",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Grok I2V — Personal Studio</title>
+  <meta name="description" content="Personal Grok Imagine I2V Frontend — Image to Video generation powered by xAI">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Animated background -->
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow-1" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow-2" aria-hidden="true"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header" id="appHeader">
+      <div class="header-brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-bolt"></i>
+        </div>
+        <div class="brand-text">
+          <h1>Grok I2V</h1>
+          <span class="brand-badge">Personal Studio</span>
+        </div>
+      </div>
+      <div class="header-status">
+        <div class="status-pill" id="statusPill">
+          <div class="status-dot" id="statusDot"></div>
+          <span id="statusText">Ready</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="app-main">
+      <!-- Left Panel: Controls -->
+      <aside class="control-panel" id="controlPanel">
+        <!-- API Key Section -->
+        <section class="panel-section" id="apiKeySection">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fa-solid fa-key"></i>
+              <span>API Key</span>
+            </div>
+            <button class="btn-icon" id="toggleApiKey" title="Toggle visibility">
+              <i class="fa-solid fa-eye-slash"></i>
+            </button>
+          </div>
+          <div class="api-key-wrap">
+            <input type="password" id="apiKeyInput" class="input-field" placeholder="xai-..." autocomplete="off" spellcheck="false">
+            <button class="btn-icon btn-save" id="saveApiKey" title="Save key">
+              <i class="fa-solid fa-check"></i>
+            </button>
+          </div>
+          <div class="api-key-links">
+            <a href="https://console.x.ai/" target="_blank" rel="noopener" class="btn-get-key" id="getApiKeyLink">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i>
+              <span>Get API Key</span>
+            </a>
+            <a href="https://accounts.x.ai/" target="_blank" rel="noopener" class="btn-xai-login" id="xaiLoginLink">
+              <i class="fa-brands fa-x-twitter"></i>
+              <span>xAI 로그인</span>
+            </a>
+          </div>
+          <p class="hint-text" id="apiKeyHint">console.x.ai에서 API Key를 발급받아 입력하세요</p>
+        </section>
+
+        <!-- Image Upload Section -->
+        <section class="panel-section">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fa-solid fa-image"></i>
+              <span>Reference Image</span>
+            </div>
+            <button class="btn-ghost btn-sm" id="pasteImageBtn" title="Paste from clipboard">
+              <i class="fa-solid fa-clipboard"></i>
+              <span>Paste</span>
+            </button>
+          </div>
+          <div class="image-upload-zone" id="imageUploadZone">
+            <div class="upload-placeholder" id="uploadPlaceholder">
+              <div class="upload-icon-wrap">
+                <i class="fa-solid fa-cloud-arrow-up"></i>
+              </div>
+              <p class="upload-text">Click to upload</p>
+              <p class="upload-hint">or Drop / Paste</p>
+            </div>
+            <img id="imagePreview" class="image-preview" alt="Reference image" style="display:none">
+            <button id="clearImageBtn" class="btn-clear-image" style="display:none" title="Remove image">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+          <input type="file" id="imageFileInput" accept="image/*" hidden>
+        </section>
+
+        <!-- Prompt Section -->
+        <section class="panel-section">
+          <div class="section-header">
+            <div class="section-title">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <span>Prompt</span>
+            </div>
+          </div>
+          <textarea id="promptInput" class="input-field textarea-field" placeholder="Describe the motion, camera movement, mood...&#10;e.g. Gentle wind blowing through her hair, camera slowly pans right, warm golden sunlight"></textarea>
+        </section>
+
+        <!-- Settings Section -->
+        <section class="panel-section">
+          <div class="section-header collapsible" id="settingsToggle">
+            <div class="section-title">
+              <i class="fa-solid fa-sliders"></i>
+              <span>Settings</span>
+            </div>
+            <i class="fa-solid fa-chevron-down section-chevron"></i>
+          </div>
+          <div class="settings-content" id="settingsContent">
+            <div class="setting-row">
+              <label class="setting-label" for="durationSlider">Duration</label>
+              <div class="setting-control">
+                <input type="range" id="durationSlider" min="3" max="15" step="1" value="5" class="range-slider">
+                <span class="range-value" id="durationValue">5s</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label class="setting-label" for="resolutionSelect">Quality</label>
+              <div class="setting-control">
+                <div class="segmented-control" id="resolutionControl">
+                  <button class="seg-btn" data-value="480p">480p</button>
+                  <button class="seg-btn active" data-value="720p">720p</button>
+                </div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <label class="setting-label" for="aspectRatioSelect">Aspect Ratio</label>
+              <div class="setting-control">
+                <select id="aspectRatioSelect" class="select-field">
+                  <option value="auto" selected>Auto</option>
+                  <option value="16:9">16:9 Wide</option>
+                  <option value="9:16">9:16 Vertical</option>
+                  <option value="1:1">1:1 Square</option>
+                  <option value="4:3">4:3</option>
+                  <option value="3:4">3:4</option>
+                  <option value="3:2">3:2</option>
+                  <option value="2:3">2:3</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Generate Button -->
+        <div class="generate-wrap">
+          <button class="btn-generate" id="generateBtn" disabled>
+            <span class="btn-generate-content" id="generateContent">
+              <i class="fa-solid fa-video"></i>
+              <span>Generate Video</span>
+            </span>
+            <span class="btn-generate-loading" id="generateLoading" style="display:none">
+              <div class="spinner"></div>
+              <span id="generateProgress">Generating...</span>
+            </span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Right Panel: Preview -->
+      <div class="preview-panel" id="previewPanel">
+        <!-- Feed Grid -->
+        <div class="feed-area" id="feedArea">
+          <div class="feed-toolbar" id="feedToolbar">
+            <div class="column-controls">
+              <button class="col-btn active" data-cols="1" title="1 column"><i class="fa-solid fa-square"></i></button>
+              <button class="col-btn" data-cols="2" title="2 columns"><i class="fa-solid fa-table-cells-large"></i></button>
+              <button class="col-btn" data-cols="3" title="3 columns"><i class="fa-solid fa-grip"></i></button>
+            </div>
+            <div class="feed-actions">
+              <button class="btn-ghost btn-sm" id="clearFeedBtn" title="Clear all">
+                <i class="fa-solid fa-trash"></i>
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="feed-grid" id="feedGrid" data-cols="1"></div>
+
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">
+              <i class="fa-solid fa-film"></i>
+            </div>
+            <h3>No videos yet</h3>
+            <p>Upload an image, write a prompt, and hit Generate to create your first video</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Video Lightbox -->
+  <div class="lightbox" id="lightbox" style="display:none">
+    <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+    <div class="lightbox-content">
+      <video id="lightboxVideo" controls autoplay loop playsinline></video>
+      <div class="lightbox-controls">
+        <button class="btn-ghost" id="lightboxDownload" title="Download"><i class="fa-solid fa-download"></i></button>
+        <button class="btn-ghost" id="lightboxClose" title="Close"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

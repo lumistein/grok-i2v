@@ -1,0 +1,648 @@
+/* ==========================================
+   GROK I2V PERSONAL STUDIO — Application
+   ========================================== */
+
+(() => {
+  'use strict';
+
+  // ========== State ==========
+  const state = {
+    apiKey: localStorage.getItem('grok_i2v_api_key') || '',
+    imageData: null, // base64 data URI
+    imageFileName: '',
+    feedItems: JSON.parse(localStorage.getItem('grok_i2v_feed') || '[]'),
+    generating: false,
+    resolution: localStorage.getItem('grok_i2v_resolution') || '720p',
+    columns: parseInt(localStorage.getItem('grok_i2v_columns') || '1', 10),
+    activePollIds: new Map(), // requestId -> intervalId
+  };
+
+  // ========== DOM Refs ==========
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    apiKeyInput: $('apiKeyInput'),
+    saveApiKey: $('saveApiKey'),
+    toggleApiKey: $('toggleApiKey'),
+    apiKeyHint: $('apiKeyHint'),
+    imageUploadZone: $('imageUploadZone'),
+    uploadPlaceholder: $('uploadPlaceholder'),
+    imagePreview: $('imagePreview'),
+    clearImageBtn: $('clearImageBtn'),
+    imageFileInput: $('imageFileInput'),
+    pasteImageBtn: $('pasteImageBtn'),
+    promptInput: $('promptInput'),
+    durationSlider: $('durationSlider'),
+    durationValue: $('durationValue'),
+    aspectRatioSelect: $('aspectRatioSelect'),
+    resolutionControl: $('resolutionControl'),
+    settingsToggle: $('settingsToggle'),
+    settingsContent: $('settingsContent'),
+    generateBtn: $('generateBtn'),
+    generateContent: $('generateContent'),
+    generateLoading: $('generateLoading'),
+    generateProgress: $('generateProgress'),
+    feedGrid: $('feedGrid'),
+    emptyState: $('emptyState'),
+    statusPill: $('statusPill'),
+    statusText: $('statusText'),
+    lightbox: $('lightbox'),
+    lightboxBackdrop: $('lightboxBackdrop'),
+    lightboxVideo: $('lightboxVideo'),
+    lightboxDownload: $('lightboxDownload'),
+    lightboxClose: $('lightboxClose'),
+    clearFeedBtn: $('clearFeedBtn'),
+    toastContainer: $('toastContainer'),
+  };
+
+  // ========== Toast ==========
+  function toast(message, type = 'info') {
+    const icons = { success: 'fa-circle-check', error: 'fa-circle-xmark', info: 'fa-circle-info', warning: 'fa-triangle-exclamation' };
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.innerHTML = `<i class="fa-solid ${icons[type] || icons.info}"></i><span>${message}</span>`;
+    el.toastContainer.appendChild(t);
+    setTimeout(() => { t.classList.add('toast-out'); setTimeout(() => t.remove(), 200); }, 4000);
+  }
+
+  // ========== Status ==========
+  function setStatus(text, mode = 'ready') {
+    el.statusText.textContent = text;
+    el.statusPill.className = `status-pill ${mode}`;
+  }
+
+  // ========== API Key ==========
+  function initApiKey() {
+    if (state.apiKey) {
+      el.apiKeyInput.value = state.apiKey;
+      el.apiKeyHint.textContent = 'API key saved ✓';
+      el.apiKeyHint.className = 'hint-text saved';
+    }
+
+    el.saveApiKey.addEventListener('click', () => {
+      const key = el.apiKeyInput.value.trim();
+      if (!key) { toast('Please enter an API key', 'warning'); return; }
+      state.apiKey = key;
+      localStorage.setItem('grok_i2v_api_key', key);
+      el.apiKeyHint.textContent = 'API key saved ✓';
+      el.apiKeyHint.className = 'hint-text saved';
+      toast('API key saved', 'success');
+      updateGenerateBtn();
+    });
+
+    el.toggleApiKey.addEventListener('click', () => {
+      const isPassword = el.apiKeyInput.type === 'password';
+      el.apiKeyInput.type = isPassword ? 'text' : 'password';
+      el.toggleApiKey.querySelector('i').className = `fa-solid fa-eye${isPassword ? '' : '-slash'}`;
+    });
+  }
+
+  // ========== Image Upload ==========
+  function initImageUpload() {
+    // Click upload
+    el.imageUploadZone.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-clear-image')) return;
+      if (!state.imageData) el.imageFileInput.click();
+    });
+
+    // File input change
+    el.imageFileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (file) loadImageFile(file);
+      e.target.value = '';
+    });
+
+    // Drag & Drop
+    el.imageUploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      el.imageUploadZone.classList.add('dragover');
+    });
+
+    el.imageUploadZone.addEventListener('dragleave', () => {
+      el.imageUploadZone.classList.remove('dragover');
+    });
+
+    el.imageUploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.imageUploadZone.classList.remove('dragover');
+      const file = e.dataTransfer?.files?.[0];
+      if (file?.type?.startsWith('image/')) loadImageFile(file);
+    });
+
+    // Clear
+    el.clearImageBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearImage();
+    });
+
+    // Paste button
+    el.pasteImageBtn.addEventListener('click', async () => {
+      try {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find(t => t.startsWith('image/'));
+          if (!imageType) continue;
+          const blob = await item.getType(imageType);
+          const ext = imageType.split('/')[1] || 'png';
+          const file = new File([blob], `pasted.${ext}`, { type: imageType });
+          loadImageFile(file);
+          toast('Image pasted from clipboard', 'success');
+          return;
+        }
+        toast('No image in clipboard', 'warning');
+      } catch (err) {
+        toast('Clipboard access denied', 'error');
+      }
+    });
+
+    // Global paste
+    document.addEventListener('paste', (e) => {
+      const file = e.clipboardData?.files?.[0];
+      if (file?.type?.startsWith('image/')) {
+        loadImageFile(file);
+        toast('Image pasted', 'info');
+      }
+    });
+  }
+
+  function loadImageFile(file) {
+    if (!file.type.startsWith('image/')) { toast('Not a valid image file', 'error'); return; }
+    if (file.size > 20 * 1024 * 1024) { toast('Image too large (max 20MB)', 'error'); return; }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      state.imageData = e.target.result;
+      state.imageFileName = file.name;
+      showImage(e.target.result);
+      updateGenerateBtn();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function showImage(src) {
+    el.imagePreview.src = src;
+    el.imagePreview.style.display = 'block';
+    el.uploadPlaceholder.style.display = 'none';
+    el.clearImageBtn.style.display = 'flex';
+    el.imageUploadZone.classList.add('has-image');
+  }
+
+  function clearImage() {
+    state.imageData = null;
+    state.imageFileName = '';
+    el.imagePreview.src = '';
+    el.imagePreview.style.display = 'none';
+    el.uploadPlaceholder.style.display = 'flex';
+    el.clearImageBtn.style.display = 'none';
+    el.imageUploadZone.classList.remove('has-image');
+    updateGenerateBtn();
+  }
+
+  // ========== Settings ==========
+  function initSettings() {
+    // Duration slider
+    el.durationSlider.addEventListener('input', () => {
+      el.durationValue.textContent = el.durationSlider.value + 's';
+    });
+
+    // Resolution segmented control
+    el.resolutionControl.querySelectorAll('.seg-btn').forEach(btn => {
+      if (btn.dataset.value === state.resolution) {
+        el.resolutionControl.querySelector('.seg-btn.active')?.classList.remove('active');
+        btn.classList.add('active');
+      }
+      btn.addEventListener('click', () => {
+        el.resolutionControl.querySelector('.seg-btn.active')?.classList.remove('active');
+        btn.classList.add('active');
+        state.resolution = btn.dataset.value;
+        localStorage.setItem('grok_i2v_resolution', state.resolution);
+      });
+    });
+
+    // Settings toggle
+    el.settingsToggle.addEventListener('click', () => {
+      const collapsed = !el.settingsContent.classList.contains('collapsed');
+      el.settingsContent.classList.toggle('collapsed', collapsed);
+      el.settingsToggle.classList.toggle('collapsed', collapsed);
+    });
+
+    // Column controls
+    document.querySelectorAll('.col-btn').forEach(btn => {
+      if (parseInt(btn.dataset.cols) === state.columns) {
+        document.querySelector('.col-btn.active')?.classList.remove('active');
+        btn.classList.add('active');
+        el.feedGrid.dataset.cols = state.columns;
+      }
+      btn.addEventListener('click', () => {
+        document.querySelector('.col-btn.active')?.classList.remove('active');
+        btn.classList.add('active');
+        el.feedGrid.dataset.cols = btn.dataset.cols;
+        state.columns = parseInt(btn.dataset.cols);
+        localStorage.setItem('grok_i2v_columns', state.columns);
+      });
+    });
+
+    // Clear feed
+    el.clearFeedBtn.addEventListener('click', () => {
+      if (!state.feedItems.length) return;
+      if (confirm('Clear all videos from the feed?')) {
+        state.feedItems = [];
+        saveFeed();
+        renderFeed();
+      }
+    });
+  }
+
+  // ========== Generate ==========
+  function updateGenerateBtn() {
+    const canGenerate = state.apiKey && state.imageData && !state.generating;
+    el.generateBtn.disabled = !canGenerate;
+  }
+
+  function initGenerate() {
+    el.generateBtn.addEventListener('click', () => {
+      if (state.generating) return;
+      generateVideo();
+    });
+  }
+
+  async function generateVideo() {
+    if (!state.apiKey) { toast('Please set your API key first', 'warning'); return; }
+    if (!state.imageData) { toast('Please upload a reference image', 'warning'); return; }
+
+    const prompt = el.promptInput.value.trim() || 'Animate this image with natural, cinematic motion';
+    const duration = parseInt(el.durationSlider.value, 10);
+    const resolution = state.resolution;
+    const aspectRatio = el.aspectRatioSelect.value;
+
+    state.generating = true;
+    el.generateContent.style.display = 'none';
+    el.generateLoading.style.display = 'flex';
+    el.generateProgress.textContent = 'Submitting...';
+    el.generateBtn.disabled = true;
+    setStatus('Submitting...', 'generating');
+
+    // Create a placeholder card
+    const placeholderId = 'gen_' + Date.now();
+    const cardData = {
+      id: placeholderId,
+      prompt,
+      duration,
+      resolution,
+      aspectRatio,
+      status: 'generating',
+      createdAt: new Date().toISOString(),
+      videoUrl: null,
+      requestId: null,
+    };
+    state.feedItems.unshift(cardData);
+    renderFeed();
+
+    try {
+      // Build request body
+      const body = {
+        model: 'grok-imagine-video',
+        prompt,
+        image: { url: state.imageData }, // base64 data URI
+        duration,
+        resolution,
+      };
+      if (aspectRatio !== 'auto') body.aspect_ratio = aspectRatio;
+
+      const resp = await fetch('/api/videos/generations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': state.apiKey,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        throw new Error(data.error?.message || data.error || `HTTP ${resp.status}`);
+      }
+
+      const requestId = data.request_id || data.id;
+      if (!requestId) throw new Error('No request_id returned');
+
+      cardData.requestId = requestId;
+      saveFeed();
+
+      // Start polling
+      pollForResult(placeholderId, requestId);
+    } catch (err) {
+      console.error('Generate error:', err);
+      cardData.status = 'error';
+      cardData.error = err.message;
+      saveFeed();
+      renderFeed();
+      toast(`Generation failed: ${err.message}`, 'error');
+      finishGenerating();
+    }
+  }
+
+  function pollForResult(cardId, requestId) {
+    const startTime = Date.now();
+    let pollCount = 0;
+    let errorCount = 0;
+    const MAX_ERRORS = 8;
+
+    const poll = async () => {
+      pollCount++;
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      el.generateProgress.textContent = `Generating... ${elapsed}s`;
+      setStatus(`Generating (${elapsed}s)`, 'generating');
+
+      // Update elapsed on card
+      const cardEl = document.querySelector(`[data-card-id="${cardId}"] .generating-elapsed`);
+      if (cardEl) cardEl.textContent = formatTime(elapsed);
+
+      try {
+        const resp = await fetch(`/api/videos/${requestId}`, {
+          headers: { 'x-api-key': state.apiKey },
+        });
+
+        const data = await resp.json();
+        errorCount = 0;
+
+        if (data.status === 'done' || data.state === 'done') {
+          // Video ready!
+          const videoUrl = data.video?.url || data.result_url || data.url || data.output?.url;
+          const card = state.feedItems.find(f => f.id === cardId);
+          if (card) {
+            card.status = 'done';
+            card.videoUrl = videoUrl;
+          }
+          saveFeed();
+          renderFeed();
+          finishGenerating();
+          toast('Video generated successfully!', 'success');
+          return;
+        }
+
+        if (data.status === 'failed' || data.state === 'failed') {
+          throw new Error(data.error?.message || data.error || 'Video generation failed');
+        }
+
+        // Still processing — keep polling
+        const delay = pollCount < 10 ? 3000 : pollCount < 30 ? 5000 : 8000;
+        state.activePollIds.set(requestId, setTimeout(poll, delay));
+      } catch (err) {
+        errorCount++;
+        if (errorCount >= MAX_ERRORS) {
+          const card = state.feedItems.find(f => f.id === cardId);
+          if (card) {
+            card.status = 'error';
+            card.error = err.message;
+          }
+          saveFeed();
+          renderFeed();
+          finishGenerating();
+          toast(`Generation failed: ${err.message}`, 'error');
+          return;
+        }
+        // Retry
+        state.activePollIds.set(requestId, setTimeout(poll, 5000));
+      }
+    };
+
+    poll();
+  }
+
+  function finishGenerating() {
+    state.generating = false;
+    el.generateContent.style.display = 'flex';
+    el.generateLoading.style.display = 'none';
+    updateGenerateBtn();
+    setStatus('Ready', 'ready');
+  }
+
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }
+
+  // ========== Feed ==========
+  function saveFeed() {
+    // Don't save base64 image data in feed to avoid huge localStorage
+    const cleanedFeed = state.feedItems.map(item => {
+      const clean = { ...item };
+      return clean;
+    });
+    try {
+      localStorage.setItem('grok_i2v_feed', JSON.stringify(cleanedFeed));
+    } catch (e) {
+      console.warn('Feed too large for localStorage, trimming...');
+      state.feedItems = state.feedItems.slice(0, 20);
+      localStorage.setItem('grok_i2v_feed', JSON.stringify(state.feedItems));
+    }
+  }
+
+  function renderFeed() {
+    el.feedGrid.innerHTML = '';
+    el.emptyState.classList.toggle('hidden', state.feedItems.length > 0);
+
+    state.feedItems.forEach(item => {
+      const card = document.createElement('div');
+      card.className = `feed-card${item.status === 'generating' ? ' generating' : ''}`;
+      card.dataset.cardId = item.id;
+
+      if (item.status === 'generating') {
+        card.innerHTML = `
+          <div class="feed-card-generating">
+            <div class="generating-spinner"></div>
+            <div class="generating-text">Generating video...</div>
+            <div class="generating-elapsed">${formatTime(0)}</div>
+          </div>
+          <div class="feed-card-info">
+            <div class="feed-card-prompt">${escapeHtml(item.prompt)}</div>
+            <div class="feed-card-meta">
+              <div class="feed-card-tags">
+                <span class="meta-tag">${item.duration}s</span>
+                <span class="meta-tag">${item.resolution}</span>
+                ${item.aspectRatio !== 'auto' ? `<span class="meta-tag">${item.aspectRatio}</span>` : ''}
+              </div>
+            </div>
+          </div>`;
+      } else if (item.status === 'error') {
+        card.innerHTML = `
+          <div class="feed-card-generating" style="background: rgba(248,113,113,0.05);">
+            <i class="fa-solid fa-circle-xmark" style="font-size:2rem;color:var(--error);"></i>
+            <div class="generating-text" style="color:var(--error);">Failed</div>
+            <div class="generating-elapsed" style="color:var(--text-tertiary);font-size:0.7rem;max-width:80%;text-align:center;">${escapeHtml(item.error || 'Unknown error')}</div>
+          </div>
+          <div class="feed-card-info">
+            <div class="feed-card-prompt">${escapeHtml(item.prompt)}</div>
+            <div class="feed-card-meta">
+              <div class="feed-card-tags">
+                <span class="meta-tag">${item.duration}s</span>
+                <span class="meta-tag">${item.resolution}</span>
+              </div>
+              <div class="feed-card-actions">
+                <button class="card-action-btn delete" title="Remove" data-action="delete" data-id="${item.id}">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>`;
+      } else if (item.status === 'done' && item.videoUrl) {
+        const videoSrc = getVideoSrc(item.videoUrl);
+        card.innerHTML = `
+          <div class="feed-card-video" data-action="play" data-url="${escapeAttr(videoSrc)}" data-original-url="${escapeAttr(item.videoUrl)}">
+            <video muted loop playsinline preload="metadata" crossorigin="anonymous">
+              <source src="${escapeAttr(videoSrc)}" type="video/mp4">
+            </video>
+            <div class="card-play-overlay"><i class="fa-solid fa-expand"></i></div>
+          </div>
+          <div class="feed-card-info">
+            <div class="feed-card-prompt">${escapeHtml(item.prompt)}</div>
+            <div class="feed-card-meta">
+              <div class="feed-card-tags">
+                <span class="meta-tag">${item.duration}s</span>
+                <span class="meta-tag">${item.resolution}</span>
+                ${item.aspectRatio && item.aspectRatio !== 'auto' ? `<span class="meta-tag">${item.aspectRatio}</span>` : ''}
+              </div>
+              <div class="feed-card-actions">
+                <button class="card-action-btn" title="Download" data-action="download" data-url="${escapeAttr(item.videoUrl)}">
+                  <i class="fa-solid fa-download"></i>
+                </button>
+                <button class="card-action-btn delete" title="Remove" data-action="delete" data-id="${item.id}">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>`;
+
+        // Auto-play on hover + fallback to proxy if direct URL fails
+        const videoEl = card.querySelector('video');
+        if (videoEl) {
+          videoEl.addEventListener('error', () => {
+            const proxyUrl = `/api/proxy-video?url=${encodeURIComponent(item.videoUrl)}`;
+            if (videoEl.querySelector('source')?.src !== proxyUrl) {
+              videoEl.querySelector('source').src = proxyUrl;
+              videoEl.load();
+            }
+          }, { once: true });
+          card.querySelector('.feed-card-video').addEventListener('mouseenter', () => videoEl.play().catch(() => {}));
+          card.querySelector('.feed-card-video').addEventListener('mouseleave', () => { videoEl.pause(); videoEl.currentTime = 0; });
+        }
+      }
+
+      el.feedGrid.appendChild(card);
+    });
+
+    // Bind actions
+    el.feedGrid.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const action = btn.dataset.action;
+        if (action === 'delete') {
+          const id = btn.dataset.id;
+          state.feedItems = state.feedItems.filter(f => f.id !== id);
+          saveFeed();
+          renderFeed();
+        } else if (action === 'play') {
+          openLightbox(btn.dataset.url);
+        } else if (action === 'download') {
+          e.stopPropagation();
+          downloadVideo(btn.dataset.url);
+        }
+      });
+    });
+  }
+
+  // ========== Lightbox ==========
+  function initLightbox() {
+    el.lightboxBackdrop.addEventListener('click', closeLightbox);
+    el.lightboxClose.addEventListener('click', closeLightbox);
+    el.lightboxDownload.addEventListener('click', () => {
+      downloadVideo(el.lightboxVideo.src);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && el.lightbox.style.display !== 'none') closeLightbox();
+    });
+  }
+
+  function openLightbox(videoUrl) {
+    el.lightboxVideo.src = videoUrl;
+    el.lightbox.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeLightbox() {
+    el.lightboxVideo.pause();
+    el.lightboxVideo.src = '';
+    el.lightbox.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  // Resolve video source: try direct URL, proxy is used as fallback on error
+  function getVideoSrc(originalUrl) {
+    // xAI video URLs are typically publicly accessible signed URLs
+    // Try direct first; <video> error handler falls back to proxy
+    return originalUrl;
+  }
+
+  async function downloadVideo(url) {
+    try {
+      toast('Downloading video...', 'info');
+      // Try direct download first
+      let resp;
+      try {
+        resp = await fetch(url, { mode: 'cors' });
+      } catch {
+        // CORS blocked — use proxy
+        resp = await fetch(`/api/proxy-video?url=${encodeURIComponent(url)}`);
+      }
+      if (!resp.ok) {
+        // Fallback to proxy on non-ok response
+        resp = await fetch(`/api/proxy-video?url=${encodeURIComponent(url)}`);
+      }
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `grok_i2v_${Date.now()}.mp4`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('Download complete', 'success');
+    } catch (err) {
+      toast(`Download failed: ${err.message}`, 'error');
+    }
+  }
+
+  // ========== Utilities ==========
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+  }
+
+  function escapeAttr(str) {
+    return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ========== Init ==========
+  function init() {
+    initApiKey();
+    initImageUpload();
+    initSettings();
+    initGenerate();
+    initLightbox();
+    updateGenerateBtn();
+    setStatus('Ready', 'ready');
+    renderFeed();
+
+    // Restore settings
+    el.feedGrid.dataset.cols = state.columns;
+  }
+
+  // Boot
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
