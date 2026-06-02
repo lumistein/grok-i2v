@@ -205,7 +205,11 @@
               <button class="col-btn active" data-cols="3" title="3 columns"><i class="fa-solid fa-grip"></i></button>
               <button class="col-btn" data-cols="4" title="4 columns"><i class="fa-solid fa-table-cells"></i></button>
             </div>
-            <div class="feed-actions">
+            <div class="feed-actions" style="display: flex; align-items: center; gap: 1rem;">
+              <label class="toggle-label" style="display: flex; align-items: center; gap: 0.45rem; font-size: 0.8rem; color: rgba(255,255,255,0.6); cursor: pointer; user-select: none;">
+                <input type="checkbox" id="autoplayFeedCheck" style="cursor: pointer; accent-color: var(--accent); width: 15px; height: 15px; border-radius: 4px;">
+                <span>자동 재생 (Muted)</span>
+              </label>
               <button class="btn-ghost btn-sm" id="clearFeedBtn" title="Clear all">
                 <i class="fa-solid fa-trash"></i>
                 <span>Clear</span>

@@ -15,6 +15,7 @@
     generating: false,
     resolution: '720p',
     columns: 3,
+    autoplayFeed: false, // Auto-play muted video feed gallery
     activePollIds: new Map(), // requestId -> intervalId
   };
 
@@ -150,6 +151,7 @@
     lightboxDownload: $('lightboxDownload'),
     lightboxClose: $('lightboxClose'),
     clearFeedBtn: $('clearFeedBtn'),
+    autoplayFeedCheck: $('autoplayFeedCheck'),
     toastContainer: $('toastContainer'),
   };
 
@@ -534,6 +536,26 @@
       });
     });
 
+    // Autoplay feed toggle
+    if (el.autoplayFeedCheck) {
+      el.autoplayFeedCheck.addEventListener('change', () => {
+        state.autoplayFeed = el.autoplayFeedCheck.checked;
+        setAppStateDB('autoplayFeed', state.autoplayFeed);
+        
+        // Dynamic play/pause on current page videos
+        document.querySelectorAll('.feed-card-video video').forEach(videoEl => {
+          if (state.autoplayFeed) {
+            videoEl.play().catch(() => {});
+          } else {
+            videoEl.pause();
+            videoEl.currentTime = 0;
+          }
+        });
+        
+        toast(`피드 자동 재생이 ${state.autoplayFeed ? '활성화' : '비활성화'}되었습니다.`, 'info');
+      });
+    }
+
     // Clear feed (will use clearFeedDB helper)
     el.clearFeedBtn.addEventListener('click', async () => {
       if (!state.feedItems.length) return;
@@ -841,10 +863,26 @@
             if (videoEl.querySelector('source')?.src !== proxyUrl) {
               videoEl.querySelector('source').src = proxyUrl;
               videoEl.load();
+              if (state.autoplayFeed) {
+                videoEl.addEventListener('loadedmetadata', () => videoEl.play().catch(() => {}), { once: true });
+              }
             }
           }, { once: true });
-          card.querySelector('.feed-card-video').addEventListener('mouseenter', () => videoEl.play().catch(() => {}));
-          card.querySelector('.feed-card-video').addEventListener('mouseleave', () => { videoEl.pause(); videoEl.currentTime = 0; });
+
+          // Play immediately if autoplay option is enabled
+          if (state.autoplayFeed) {
+            videoEl.play().catch(() => {});
+          }
+
+          card.querySelector('.feed-card-video').addEventListener('mouseenter', () => {
+            if (state.autoplayFeed) return; // Ignore hover play if autoplay option is ON
+            videoEl.play().catch(() => {});
+          });
+          card.querySelector('.feed-card-video').addEventListener('mouseleave', () => {
+            if (state.autoplayFeed) return; // Ignore hover pause if autoplay option is ON
+            videoEl.pause();
+            videoEl.currentTime = 0;
+          });
         }
       }
 
@@ -964,6 +1002,10 @@
       state.model = await getAppStateDB('currentModel') || 'grok-imagine-video-1.5-preview';
       state.resolution = await getAppStateDB('currentResolution') || '720p';
       state.columns = parseInt(await getAppStateDB('currentColumns') || '3', 10);
+      state.autoplayFeed = (await getAppStateDB('autoplayFeed')) === true;
+      if (el.autoplayFeedCheck) {
+        el.autoplayFeedCheck.checked = state.autoplayFeed;
+      }
       
       const savedPrompt = await getAppStateDB('currentPrompt') || '';
       el.promptInput.value = savedPrompt;
