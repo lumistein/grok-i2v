@@ -833,8 +833,7 @@
             <i class="fa-solid fa-xmark"></i>
           </button>
           <div class="feed-card-video" data-action="play" data-url="${escapeAttr(videoSrc)}" data-original-url="${escapeAttr(item.videoUrl)}">
-            <video muted loop playsinline preload="auto" crossorigin="anonymous" ${state.autoplayFeed ? 'autoplay' : ''} ${item.imageData ? `poster="${escapeAttr(item.imageData)}"` : ''}>
-              <source src="${escapeAttr(videoSrc)}" type="video/mp4">
+            <video muted loop playsinline preload="auto" crossorigin="anonymous" ${state.autoplayFeed ? 'autoplay' : ''} ${item.imageData ? `poster="${escapeAttr(item.imageData)}"` : ''} src="${escapeAttr(videoSrc)}">
             </video>
             <div class="card-play-overlay"><i class="fa-solid fa-expand"></i></div>
           </div>
@@ -863,14 +862,7 @@
         const videoEl = card.querySelector('video');
         if (videoEl) {
           videoEl.addEventListener('error', () => {
-            const proxyUrl = `/api/proxy-video?url=${encodeURIComponent(item.videoUrl)}`;
-            if (videoEl.querySelector('source')?.src !== proxyUrl) {
-              videoEl.querySelector('source').src = proxyUrl;
-              videoEl.load();
-              if (state.autoplayFeed) {
-                videoEl.addEventListener('canplay', () => videoEl.play().catch(() => {}), { once: true });
-              }
-            }
+            console.error('Failed to load video via proxy:', videoEl.src);
           }, { once: true });
 
           // Play immediately if autoplay option is enabled
@@ -952,9 +944,9 @@
 
   // Resolve video source: try direct URL, proxy is used as fallback on error
   function getVideoSrc(originalUrl) {
-    // xAI video URLs are typically publicly accessible signed URLs
-    // Try direct first; <video> error handler falls back to proxy
-    return originalUrl;
+    if (!originalUrl) return '';
+    // Always use backend proxy URL to completely avoid CORS blocks and playback failures
+    return `/api/proxy-video?url=${encodeURIComponent(originalUrl)}`;
   }
 
   async function downloadVideo(url) {
