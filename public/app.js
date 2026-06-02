@@ -833,7 +833,7 @@
             <i class="fa-solid fa-xmark"></i>
           </button>
           <div class="feed-card-video" data-action="play" data-url="${escapeAttr(videoSrc)}" data-original-url="${escapeAttr(item.videoUrl)}">
-            <video muted loop playsinline preload="metadata" crossorigin="anonymous" ${item.imageData ? `poster="${escapeAttr(item.imageData)}"` : ''}>
+            <video muted loop playsinline preload="auto" crossorigin="anonymous" ${state.autoplayFeed ? 'autoplay' : ''} ${item.imageData ? `poster="${escapeAttr(item.imageData)}"` : ''}>
               <source src="${escapeAttr(videoSrc)}" type="video/mp4">
             </video>
             <div class="card-play-overlay"><i class="fa-solid fa-expand"></i></div>
@@ -854,8 +854,12 @@
               </div>
             </div>
           </div>`;
+      }
 
-        // Auto-play on hover + fallback to proxy if direct URL fails
+      el.feedGrid.appendChild(card);
+
+      // Initialize video actions after card is appended to the DOM to ensure play() is allowed
+      if (item.status === 'done' && item.videoUrl) {
         const videoEl = card.querySelector('video');
         if (videoEl) {
           videoEl.addEventListener('error', () => {
@@ -864,14 +868,19 @@
               videoEl.querySelector('source').src = proxyUrl;
               videoEl.load();
               if (state.autoplayFeed) {
-                videoEl.addEventListener('loadedmetadata', () => videoEl.play().catch(() => {}), { once: true });
+                videoEl.addEventListener('canplay', () => videoEl.play().catch(() => {}), { once: true });
               }
             }
           }, { once: true });
 
           // Play immediately if autoplay option is enabled
           if (state.autoplayFeed) {
-            videoEl.play().catch(() => {});
+            videoEl.play().catch(() => {
+              // Retry on canplay if browser blocked it during loading state
+              videoEl.addEventListener('canplay', () => {
+                if (state.autoplayFeed) videoEl.play().catch(() => {});
+              }, { once: true });
+            });
           }
 
           card.querySelector('.feed-card-video').addEventListener('mouseenter', () => {
@@ -885,8 +894,6 @@
           });
         }
       }
-
-      el.feedGrid.appendChild(card);
     });
 
     // Bind actions
