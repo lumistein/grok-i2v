@@ -62,10 +62,11 @@
 
           <!-- Mode 1: Grok Login (Default) -->
           <div id="grokLoginContainer">
-            <button class="btn-primary" id="btnGrokLogin" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem; background: #fff; color: #000; border: none; font-weight: 600; padding: 0.7rem; border-radius: 8px; cursor: pointer;">
+            <a id="btnGrokLogin" href="#" target="_blank" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.75rem; background: #fff; color: #000; border: none; font-weight: 600; padding: 0.7rem; border-radius: 8px; cursor: pointer; text-decoration: none; box-sizing: border-box;">
               <i class="fa-brands fa-x-twitter"></i>
               <span>Grok 계정 로그인</span>
-            </button>
+            </a>
+
             <div class="api-key-wrap" id="authCodeWrap" style="display: none; display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
               <input type="password" id="authCodeInput" class="input-field" placeholder="OAuth 인증 코드 입력 (0AecM...)" autocomplete="off" spellcheck="false" style="flex: 1; padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); color: #fff;">
               <button class="btn-icon btn-save" id="btnCompleteLogin" title=" Complete" style="background: var(--accent); color: #fff; border: none; border-radius: 6px; width: 40px; cursor: pointer;">

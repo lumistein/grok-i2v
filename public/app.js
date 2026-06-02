@@ -162,72 +162,43 @@
       }
     }
 
-    // Mode 1: OAuth Login Initiate
-    elTabs.btnGrokLogin.addEventListener('click', (e) => {
-      // Prevent default action and stop event propagation
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Open a blank window immediately inside the synchronous click context with empty URL
-      const loginWindow = window.open('', '_blank');
-      if (!loginWindow) {
-        toast('팝업이 차단되었습니다! 브라우저 설정이나 주소창 옆 아이콘에서 팝업을 허용해 주세요.', 'error');
-        return;
-      }
-
-      // Show temporary loading indicator in the new window
+    // Pre-generate PKCE verifier and challenge to set native <a> href (bypassing popup blockers completely)
+    async function prepareGrokLoginLink() {
       try {
-        loginWindow.document.write(`
-          <html>
-            <head>
-              <title>Connecting to xAI...</title>
-              <style>
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #000; color: #fff; margin: 0; }
-                .spinner { width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1rem; }
-                @keyframes spin { to { transform: rotate(360deg); } }
-              </style>
-            </head>
-            <body>
-              <div class="spinner"></div>
-              <h2>Connecting to xAI...</h2>
-              <p style="color: #888; font-size: 0.9rem;">Establishing secure PKCE connection</p>
-            </body>
-          </html>
-        `);
-      } catch (err) {
-        // Safe fallback if document.write is blocked
-      }
-
-      (async () => {
-        try {
-          const verifier = generateVerifier();
+        let verifier = localStorage.getItem('grok_oauth_verifier');
+        if (!verifier) {
+          verifier = generateVerifier();
           localStorage.setItem('grok_oauth_verifier', verifier);
-          
-          const challenge = await generateChallenge(verifier);
-          const stateStr = Math.random().toString(36).substring(2, 15);
-          const nonce = Math.random().toString(36).substring(2, 15);
-          
-          const consentUrl = `https://accounts.x.ai/sign-in?redirect=oauth2-provider&return_to=${encodeURIComponent(
-            `/oauth2/consent?response_type=code&client_id=b1a00492-073a-47ea-816f-4c329264a828&redirect_uri=http://127.0.0.1:38769/callback&scope=openid profile email offline_access grok-cli:access api:access&state=${stateStr}&code_challenge=${challenge}&code_challenge_method=S256&nonce=${nonce}&referrer=banana-grok`
-          )}`;
-          
-          // Redirect the blank window to the authorization URL
-          loginWindow.location.href = consentUrl;
-          
-          // Show auth code input field
-          elTabs.authCodeWrap.style.display = 'flex';
-          elTabs.authCodeInput.value = '';
-          elTabs.authCodeInput.focus();
-          elTabs.grokLoginHint.textContent = '로그인 완료 후 생성된 코드를 아래에 입력하세요.';
-          elTabs.grokLoginHint.style.color = 'rgba(255, 255, 255, 0.6)';
-          toast('xAI 로그인 창이 열렸습니다. 인증 후 코드를 복사해 주세요.', 'info');
-        } catch (err) {
-          console.error('Login initiation failed:', err);
-          loginWindow.close();
-          toast('로그인 요청 생성 실패', 'error');
         }
-      })();
+        
+        const challenge = await generateChallenge(verifier);
+        const stateStr = Math.random().toString(36).substring(2, 15);
+        const nonce = Math.random().toString(36).substring(2, 15);
+        
+        const consentUrl = `https://accounts.x.ai/sign-in?redirect=oauth2-provider&return_to=${encodeURIComponent(
+          `/oauth2/consent?response_type=code&client_id=b1a00492-073a-47ea-816f-4c329264a828&redirect_uri=http://127.0.0.1:38769/callback&scope=openid profile email offline_access grok-cli:access api:access&state=${stateStr}&code_challenge=${challenge}&code_challenge_method=S256&nonce=${nonce}&referrer=banana-grok`
+        )}`;
+        
+        elTabs.btnGrokLogin.href = consentUrl;
+      } catch (err) {
+        console.error('Failed to prepare Grok login link:', err);
+      }
+    }
+
+    // Prepare link on init
+    prepareGrokLoginLink();
+
+    // Mode 1: OAuth Login Click UI response
+    elTabs.btnGrokLogin.addEventListener('click', () => {
+      // Just toggle the input visibility and guide text (browser handles opening the href link natively)
+      elTabs.authCodeWrap.style.display = 'flex';
+      elTabs.authCodeInput.value = '';
+      elTabs.authCodeInput.focus();
+      elTabs.grokLoginHint.textContent = '로그인 완료 후 생성된 코드를 아래에 입력하세요.';
+      elTabs.grokLoginHint.style.color = 'rgba(255, 255, 255, 0.6)';
+      toast('로그인 창이 열렸습니다. 인증 완료 후 발급되는 코드를 복사해 입력해 주세요.', 'info');
     });
+
 
 
 
